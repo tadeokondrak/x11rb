@@ -30,3 +30,6 @@ script:
 
   - cargo build --verbose --all-targets
   - cargo test --verbose
+
+  - rustup component add rustfmt
+  - cargo fmt --all -- --check
