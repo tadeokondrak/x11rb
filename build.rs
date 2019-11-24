@@ -31,7 +31,7 @@ fn get_paths() -> (String, String) {
     (pythondir, includedir)
 }
 
-fn main() {
+fn run_code_generator() {
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
     let out_path = out_path.join("generated");
     create_dir_if_not_exist(&out_path).unwrap();
@@ -42,4 +42,17 @@ fn main() {
         .status()
         .unwrap();
     assert!(status.success());
+}
+
+fn find_libxcb() {
+    // xcb 1.12 adds xcb_send_request_with_fds64().
+    pkg_config::Config::new()
+        .atleast_version("1.12")
+        .probe("xcb")
+        .expect("Failed to find xcb >= 1.12 with pkg-config");
+}
+
+fn main() {
+    run_code_generator();
+    find_libxcb();
 }
