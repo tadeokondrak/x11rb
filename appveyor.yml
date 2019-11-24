@@ -5,7 +5,7 @@ install:
   - rustc -V
   - cargo -V
 
-  - C:\cygwin\setup-x86.exe -qnNd -g -P libxcb-devel
+  - C:\cygwin\setup-x86.exe -qnNd -R "C:/Program Files/Git" -g -P libxcb-devel
   - set PATH=C:\msys64\mingw32\bin;C:\cygwin\bin;%PATH%
   - set PKG_CONFIG_PATH=C:\cygwin\lib\pkgconfig
 
