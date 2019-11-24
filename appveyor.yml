@@ -8,9 +8,11 @@ install:
   - C:\cygwin\setup-x86.exe -qnNd -R "C:/Program Files/Git" -g -P libxcb-devel
   - set PATH=C:\msys64\mingw32\bin;C:\Program Files\Git\bin;%PATH%
   - set PKG_CONFIG_PATH=C:\Program Files\Git\lib\pkgconfig
-    #- set RUSTFLAGS=-L "C:\Program Files\Git\lib"
   - pkg-config --modversion xcb
   - pkg-config --cflags --libs xcb
+  - mkdir lib
+  - cp /usr/lib/libxcb* lib
+  - set RUSTFLAGS=-L "lib"
 
 build: false
 test_script:
