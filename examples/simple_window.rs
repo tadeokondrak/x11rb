@@ -6,17 +6,22 @@ use x11rb::xcb_ffi::XCBConnection;
 use x11rb::x11_utils::{Event, GenericError};
 use x11rb::generated::xproto::*;
 use x11rb::connection::Connection;
+use x11rb::wrapper::ConnectionExt as _;
 
 fn main() {
     let (conn, screen_num) = XCBConnection::connect(None).unwrap();
-    let screen = &conn.setup().roots[screen_num];
 
+    // The following is only needed for start_timeout_thread(), which is used for 'tests'
+    let conn1 = std::sync::Arc::new(conn);
+    let conn = &*conn1;
+
+    let screen = &conn.setup().roots[screen_num];
     let win_id = conn.generate_id();
     let gc_id = conn.generate_id();
 
     let (wm_protocols, wm_delete_window) = {
-        let protocols = intern_atom(&conn, 0, "WM_PROTOCOLS".as_bytes()).unwrap();
-        let delete = intern_atom(&conn, 0, "WM_DELETE_WINDOW".as_bytes()).unwrap();
+        let protocols = conn.intern_atom(false, "WM_PROTOCOLS".as_bytes()).unwrap();
+        let delete = conn.intern_atom(false, "WM_DELETE_WINDOW".as_bytes()).unwrap();
         (protocols.reply().unwrap().atom, delete.reply().unwrap().atom)
     };
 
@@ -30,60 +35,56 @@ fn main() {
 
     let (mut width, mut height) = (100, 100);
 
-    create_window(&conn, 24, win_id, screen.root, 0, 0, width, height, 0, WindowClass::InputOutput, 0, &win_aux).unwrap();
+    conn.create_window(screen.root_depth, win_id, screen.root, 0, 0, width, height, 0, WindowClass::InputOutput, 0, &win_aux).unwrap();
+
+    util::start_timeout_thread(conn1.clone(), win_id);
 
     let title = "Simple Window";
-    change_property(&conn, PropMode::Replace, win_id, Atom::WM_NAME.into(), Atom::STRING.into(), 8, title.as_bytes()).unwrap();
-    // FIXME: format != 8 is broken, because the XML uses <op> stuff in a way that we cannot
-    // really use. Perhaps special-case change_property and make variants of it for the different
-    // valid formats?
-    change_property(&conn, PropMode::Replace, win_id, wm_protocols, Atom::WINDOW.into(), 32, &wm_delete_window.to_ne_bytes()).unwrap();
+    conn.change_property8(PropMode::Replace, win_id, Atom::WM_NAME.into(), Atom::STRING.into(), title.as_bytes()).unwrap();
+    conn.change_property32(PropMode::Replace, win_id, wm_protocols, Atom::ATOM.into(), &[wm_delete_window]).unwrap();
 
-    let reply = get_property(&conn, 0, win_id, Atom::WM_NAME.into(), Atom::STRING.into(), 0, 1024).unwrap();
+    let reply = conn.get_property(0, win_id, Atom::WM_NAME.into(), Atom::STRING.into(), 0, 1024).unwrap();
     let reply = reply.reply().unwrap();
     assert_eq!(reply.value, title.as_bytes());
 
-    create_gc(&conn, gc_id, win_id, &gc_aux).unwrap();
+    conn.create_gc(gc_id, win_id, &gc_aux).unwrap();
 
-    map_window(&conn, win_id).unwrap();
+    conn.map_window(win_id).unwrap();
 
     conn.flush();
 
     loop {
-        let event = conn.wait_for_event();
-        let event = match event {
-            Err(e) => {
-                eprintln!("Got connection error: {:?}", e);
-                return;
-            },
-            Ok(event) => event
-        };
+        let event = conn.wait_for_event().unwrap();
         match event.response_type() {
             EXPOSE_EVENT => {
-                let event = ExposeEvent::try_from(event);
+                let event = ExposeEvent::from(event);
                 println!("{:?})", event);
-                if let Ok(event) = event {
-                    if event.count == 0 {
-                        // We ought to clear the background before drawing something new, but...
-                        // whatever
-                        let (width, height): (i16, i16) = (width as _, height as _);
-                        let points = [
-                            Point { x: width, y: height },
-                            Point { x: -10, y: -10 },
-                            Point { x: -10, y: height + 10 },
-                            Point { x: width + 10, y: -10 },
-                        ];
-                        poly_line(&conn, CoordMode::Origin, win_id, gc_id, &points).unwrap();
-                        conn.flush();
-                    }
+                if event.count == 0 {
+                    // We ought to clear the background before drawing something new, but...
+                    // whatever
+                    let (width, height): (i16, i16) = (width as _, height as _);
+                    let points = [
+                        Point { x: width, y: height },
+                        Point { x: -10, y: -10 },
+                        Point { x: -10, y: height + 10 },
+                        Point { x: width + 10, y: -10 },
+                    ];
+                    conn.poly_line(CoordMode::Origin, win_id, gc_id, &points).unwrap();
+                    conn.flush();
                 }
             },
             CONFIGURE_NOTIFY_EVENT => {
-                let event = ConfigureNotifyEvent::try_from(event);
+                let event = ConfigureNotifyEvent::from(event);
+                width = event.width;
+                height = event.height;
+            },
+            CLIENT_MESSAGE_EVENT => {
+                let event = ClientMessageEvent::from(event);
                 println!("{:?})", event);
-                if let Ok(event) = event {
-                    width = event.width;
-                    height = event.height;
+                let data = event.data.as_data32();
+                if event.format == 32 && event.window == win_id && data[0] == wm_delete_window {
+                    println!("Window was asked to close");
+                    return;
                 }
             }
             0 => { println!("Unknown error {:?}", GenericError::try_from(event)); },
@@ -91,3 +92,5 @@ fn main() {
         }
     }
 }
+
+include!("integration_test_util/util.rs");

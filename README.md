@@ -5,12 +5,14 @@ Feel free to open issues for any problems or questions you might have.
 
 ## Building
 
-This crate depends on `xcb-proto`. It uses `pkg-config` to find it. In a
-nutshell, if you can run `pkg-config --modversion xcb-proto` successfully, you
-should be fine.
+This crate depends on `xcb-proto`. When the `vendor-xcb-proto` is enabled, which
+it is by default, a copy of xcb-proto that comes with the source code is used.
 
-On Debian, the necessary packages are called `pkg-config` and `xcb-proto`. I
-hope that other distros use similarly obvious naming.
+When that feature is disabled, `pkg-config` is used to find `xcb-proto`.  In a
+nutshell, if you can run `pkg-config --modversion xcb-proto` successfully, you
+should be fine. On Debian, the necessary packages are called `pkg-config`,
+`xcb-proto`, and `python-xcbgen`. I hope that other distros use similarly
+obvious naming.
 
 
 ## Motivation
@@ -76,16 +78,21 @@ instead of providing a foreign function interface to libxcb, the generated code
 reimplements the serialising and unserialising code that is provided by libxcb.
 libxcb is only used for receiving and sending opaque packets.
 
-This reimplementation is done without any uses of `unsafe` and thus should enjoy
+This reimplementation tries to avoid uses of `unsafe` and thus should enjoy
 Rust's usual safety guarantees. After all, the best way to trust the unsafe code
 coming out of your code generator is if your code generator does not generate
-any unsafe code.
+any unsafe code. Unsafe code is currently necessary for FFI binding to a handful
+of functions from libxcb (see `src/xcb_ffi.rs`) and a special append-only
+data-structure (see `ExtensionInformation` in `src/connection.rs`).
 
 This means that this project is even safer than libxcb, because libxcb forces
 its users to blindly trust length fields that come from the X11 server.
 
 The downside of this is possibly slower code. However, if your bottleneck is in
 talking to the X11 server, you are seriously doing something wrong.
+
+Examples of the generated code [can be found here](doc/generated_code.md). Feel
+free to suggest improvements to it.
 
 
 ## Does this support async/await
@@ -95,24 +102,13 @@ something wrong. Also, it encourages people to write high-latency code instead
 of sending multiple requests and only afterwards wait for the replies.
 
 
-## Future work
+## Current state
 
-- Support extensions. Currently, only the core protocol is done.
-- big requests support
-- InternAtom `only_if_exists` argument should be `bool`, but the python code in
-  xcb-proto does not provide this information
-- The aux structs should be passed via something like AsRef to the request
-  functions. This should allow to pass both `obj` and `&obj`.
-- code size optimisation: have the generic functions resolve their arguments and
-  then call a common (internal) helper function
-- FD passing
-- checked requests (needed?)
-  - Add `connection.check_request(sequence)` and be done?
-- thread safety (connection should be Send and Sync)
-  - The basic guarantee is provided by libxcb, so this should be easily doable.
-- Rewrite it in Rust - a non-ffi based library
-  - I know, I know, this may sound crazy, but libxcb is only used for sending
-    and receiving opaque packets. This can also be done in pure rust code.
+The core X11 protocol and some extensions already work. There are some known
+problems and not all extensions are provided. For more information, have a look
+at the [known issues](https://github.com/psychon/x11rb/issues).
+
+The changelog is available in a [separate file](doc/changelog.md).
 
 
 ## License
@@ -125,6 +121,10 @@ Licensed under either of
    ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
 
 at your option.
+
+The subdirectory xcb-proto-1.13 contains a vendored copy of the package of the
+same name. It is covered by the MIT license. See
+[xcb-proto-1.13/COPYING](xcb-proto-1.13/COPYING) for details.
 
 ## Contribution
 

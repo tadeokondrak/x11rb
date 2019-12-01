@@ -1,6 +1,9 @@
 language: rust
 dist: bionic  # need at least xcb-proto 1.12, because commit a3da4e8c in xcb-proto changes our API
 rust:
+  # std::io::IoSlice was stabilised in 1.36.0, but 1.36.0 fails with a weird
+  # error enabled by deny(single_use_lifetimes).
+  - 1.37.0
   - stable
   - beta
   - nightly
@@ -15,6 +18,8 @@ addons:
       - xcb-proto
       - python-xcbgen
       - pkg-config
+      - pycodestyle
+      - xvfb
 
 script:
   # Check the code generator against python 2 and 3. Both versions should
@@ -28,8 +33,20 @@ script:
   - python2 rs_code_generator.py -p "$PYDIR" -i "$PROTO" -o /tmp/py2 generated
   - diff -Nurp /tmp/py2 /tmp/py3
 
-  - cargo build --verbose --examples
-  - cargo test --verbose
-
   - rustup component add clippy
   - cargo clippy --all-targets --all-features -- -D warnings
+
+  - cargo build --verbose --all-targets
+  - cargo test --verbose
+  - pycodestyle --show-pep8 --show-source $(git ls-files '*.py' | grep -v xcb-proto-1.13) --max-line-length=130
+
+  # Run the examples as 'integration tests'. For this, there is a special
+  # timeout mode where the examples close automatically after some time.
+  - |
+    for example in examples/*.rs; do
+        example=${example/examples\//}
+        example=${example/.rs/}
+        if [ "$example" != tutorial ] ; then
+            X11RB_EXAMPLE_TIMEOUT=1 xvfb-run -a cargo run --example "$example" || exit 1
+        fi
+    done
