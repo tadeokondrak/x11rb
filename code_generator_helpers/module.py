@@ -154,6 +154,7 @@ class Module(object):
         self.trait_out = Output()
         self.namespace = outer_module.namespace
 
+        self.out("#![allow(clippy::unreadable_literal)]")
         self.out("use std::convert::TryFrom;")
         self.out("#[allow(unused_imports)]")
         self.out("use std::convert::TryInto;")
